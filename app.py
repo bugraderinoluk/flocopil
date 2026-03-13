@@ -105,10 +105,69 @@ with tab1:
             asyncio.run(ses_olustur(veri.get("sesli_onay", "Kayıt tamam."), "onay.mp3", "kadin"))
             st.audio("onay.mp3", format="audio/mp3", autoplay=True)
 
-# SEKME 2: GEÇMİŞ (Aynı Kaldı - Özetlendi)
+# SEKME 2: GEÇMİŞ VE ÖZETLER
 with tab2:
-    st.markdown("Geçmiş ziyaretleriniz burada listelenir. (Detaylar önceki sürümlerdekiyle aynı çalışır).")
+    st.markdown("### 📅 Veritabanı Geçmişi")
+    if not ziyaret_verisi:
+        st.info("Henüz kayıt bulunmamaktadır.")
+    else:
+        gunluk_kayitlar = defaultdict(list)
+        for satir in ziyaret_verisi:
+            tarih_saat = str(satir.get("Tarih", ""))
+            if tarih_saat:
+                gun = tarih_saat.split(" ")[0]
+                gunluk_kayitlar[gun].append(satir)
+        
+        col_dun, col_yarin = st.columns(2)
+        dunun_tarihi = (datetime.now() - timedelta(1)).strftime("%d-%m-%Y")
+        
+        with col_dun:
+            if st.button("🔊 Dünün Özeti"):
+                dun_verisi = gunluk_kayitlar.get(dunun_tarihi, [])
+                if not dun_verisi:
+                    st.warning("Düne ait kayıt bulunamadı.")
+                else:
+                    with st.spinner("Brifing hazırlanıyor..."):
+                        prompt = f"""Şu veri dünkü ziyaretlerim: {str(dun_verisi)}. 
+                        Bana detaylı ve profesyonel bir brifing ver. 
+                        1. Kısaltmaları ASLA kullanma! 'Uzm. Dr.' yerine 'Uzman Doktor' yaz.
+                        2. Unvanlardan sonra ASLA nokta (.) koyma.
+                        3. İlaç isimlerini fonetik yaz (Doloriks, Fleksiyum, Kardiyoksen).
+                        """
+                        ozet_cevap = model.generate_content(prompt).text.strip()
+                        asyncio.run(ses_olustur(ozet_cevap, "dun_ozet.mp3", "kadin"))
+                        st.audio("dun_ozet.mp3", format="audio/mp3", autoplay=True)
+                    
+        with col_yarin:
+            if st.button("📋 Yarının Planı"):
+                with st.spinner("İş planı çıkarılıyor..."):
+                    prompt = f"""Şu veriler tüm kayıtlarım: {str(ziyaret_verisi)}. 
+                    Sadece 'Aksiyon' kısımlarına bak. Yarın yapmam gereken işleri bul.
+                    Bana İKİ parçadan oluşan bir yanıt ver.
+                    Parça 1 (Görsel Liste): Madde madde, çok net bir görsel liste hazırla.
+                    Parça 2 (Sesli Brifing): 'SESLİ_METİN:' kelimesinden sonra bu listenin düz metin olarak halini yaz.
+                    """
+                    cevap = model.generate_content(prompt).text.strip()
+                    
+                    if "SESLİ_METİN:" in cevap:
+                        gorsel_liste, sesli_metin = cevap.split("SESLİ_METİN:")
+                    else:
+                        gorsel_liste = cevap
+                        sesli_metin = cevap
+                    
+                    st.markdown("### 📋 Yarının İş Listesi")
+                    st.info(gorsel_liste.strip())
+                    
+                    asyncio.run(ses_olustur(sesli_metin.strip(), "yarin_plan.mp3", "kadin"))
+                    st.audio("yarin_plan.mp3", format="audio/mp3", autoplay=True)
 
+        for gun in sorted(gunluk_kayitlar.keys(), key=lambda d: datetime.strptime(d, "%d-%m-%Y"), reverse=True):
+            with st.expander(f"📅 {gun} ({len(gunluk_kayitlar[gun])} Kayıt)"):
+                for k in gunluk_kayitlar[gun]:
+                    saat = k['Tarih'].split(' ')[1] if ' ' in k['Tarih'] else ""
+                    st.markdown(f"**{saat} - {k.get('Hekim', '')} ({k.get('İlaç', '')})**")
+                    st.write(f"- **Özet:** {k.get('Özet', '')}\n- **İtiraz:** {k.get('İtiraz', '')}\n- **Aksiyon:** {k.get('Aksiyon', '')}")
+                    st.divider()
 # SEKME 3: LİTERATÜR
 with tab3:
     arama_sorgusu = st.text_area("İtiraz / Araştırma Konusu:", placeholder="Örn: Diyabetik hastalarda böbreği yorar mı?")
@@ -177,4 +236,5 @@ with tab5:
         ilac_bazli = df_satis.groupby('İlaç')[['Satilan_Kutu', 'Hedef_Kutu']].sum()
         st.bar_chart(ilac_bazli)
     else:
+
         st.warning("Henüz Excel'de 'Satislar' sayfası oluşturulmamış veya boş.")
