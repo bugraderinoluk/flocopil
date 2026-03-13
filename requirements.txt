@@ -1,0 +1,7 @@
+streamlit
+google-generativeai
+audio-recorder-streamlit
+edge-tts
+gspread
+google-auth
+pandas
