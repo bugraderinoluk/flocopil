@@ -3,238 +3,234 @@ import google.generativeai as genai
 from audio_recorder_streamlit import audio_recorder
 import edge_tts
 import asyncio
-import json
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, timedelta
-from collections import defaultdict
 import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import json
+import tempfile
+import os
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Florini Co-Pilot", page_icon="💊", layout="centered")
+# 1. PROFESYONEL ARAYÜZ VE CSS AYARLARI
+st.set_page_config(page_title="Florini Co-Pilot Pro", page_icon="💊", layout="wide")
 
-# --- GÜVENLİK ---
-if 'giris_basarili' not in st.session_state:
-    st.session_state['giris_basarili'] = False
-
-def sifre_kontrol():
-    if st.session_state['sifre_kutusu'] == "Florini2026_Pro!":
-        st.session_state['giris_basarili'] = True
-    else:
-        st.error("❌ Hatalı şifre. Lütfen yetkili erişim şifresini giriniz.")
-
-if not st.session_state['giris_basarili']:
-    st.markdown("<h1 style='text-align: center; color: #1E1E1E;'>🔒 Florini Sistemine Giriş</h1>", unsafe_allow_html=True)
-    st.text_input("Erişim Şifresi:", type="password", key="sifre_kutusu", on_change=sifre_kontrol)
-    st.button("Giriş Yap", on_click=sifre_kontrol, use_container_width=True)
-    st.stop()
-
-# --- CSS (KIRMIZI-MAVİ GEÇİŞ) ---
 st.markdown("""
     <style>
-        .stApp { background: linear-gradient(135deg, #8B0000 0%, #00008B 100%) !important; }
-        h1, h2, h3, h4, h5, h6, p, span, label, li, div[data-testid="stMarkdownContainer"] { color: #FAFAFA !important; }
-        div[data-testid="stExpander"] { background-color: rgba(255, 255, 255, 0.1) !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; border-radius: 10px; backdrop-filter: blur(10px); }
-        div[data-testid="stExpander"] summary p { font-weight: bold; }
-        div[data-testid="stExpander"] summary svg { fill: #FAFAFA !important; }
-        button[data-baseweb="tab"] { background-color: rgba(255,255,255,0.1) !important; color: #FAFAFA !important; }
-        button[aria-selected="true"] { background-color: rgba(255,255,255,0.3) !important; font-weight: bold; }
-        .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: rgba(255,255,255,0.9) !important; color: #000 !important; }
+    .main { background-color: #f8f9fa; }
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3em;
+        background-color: #004a99;
+        color: white;
+        font-weight: bold;
+        border: none;
+    }
+    .stButton>button:hover { background-color: #003366; color: #ffcc00; }
+    .reportview-container .main .block-container { padding-top: 2rem; }
+    div[data-baseweb="tab-list"] { gap: 20px; }
+    div[data-baseweb="tab"] {
+        padding: 10px 20px;
+        background-color: #f1f3f5;
+        border-radius: 10px 10px 0 0;
+    }
+    div[aria-selected="true"] { background-color: #004a99 !important; color: white !important; }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# --- API VE EXCEL ---
-st.title("🎙️ Florini Co-Pilot")
-api_key = st.secrets["GOOGLE_API_KEY"]
-google_json_str = st.secrets["google_json"]
-genai.configure(api_key=api_key.strip())
-model = genai.GenerativeModel('models/gemini-2.5-flash')
+# 2. GÜVENLİK VE BAĞLANTILAR
+def check_password():
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+    
+    if st.session_state["password_correct"]:
+        return True
 
-@st.cache_resource
-def google_sheets_baglan(json_str):
-    creds_dict = json.loads(json_str)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    gc = gspread.authorize(creds)
-    dosya = gc.open("Florini_Raporlar")
-    return dosya
+    with st.sidebar:
+        st.title("🔐 Güvenli Giriş")
+        pwd = st.text_input("Şifre:", type="password")
+        if st.button("Giriş Yap"):
+            if pwd == "Florini2026_Pro!":
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Hatalı şifre!")
+    return False
 
-@st.cache_data(ttl=600)
-def verileri_getir(json_str):
-    dosya = google_sheets_baglan(json_str)
-    ziyaretler = dosya.sheet1.get_all_records()
+if not check_password():
+    st.stop()
+
+# API Ayarları
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+model = genai.GenerativeModel('gemini-1.5-pro-latest')
+
+# Google Sheets Bağlantısı
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+creds_dict = json.loads(st.secrets["google_json"])
+creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+client = gspread.authorize(creds)
+sheet = client.open("Florini_DB").sheet1
+
+def veri_getir():
     try:
-        satislar = dosya.worksheet("Satislar").get_all_records()
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
     except:
-        satislar = [] # Eğer sayfa henüz açılmadıysa çökmesin
-    return ziyaretler, satislar, dosya.url
+        return pd.DataFrame()
 
-ziyaret_verisi, satis_verisi, excel_url = verileri_getir(google_json_str)
-dosya = google_sheets_baglan(google_json_str)
-tablo = dosya.sheet1
+df_ziyaret = veri_getir()
 
-# --- SES MOTORU (ERKEK/KADIN) ---
-async def ses_olustur(metin, dosya_adi, cinsiyet="kadin"):
-    ses_kodu = "tr-TR-EmelNeural" if cinsiyet == "kadin" else "tr-TR-AhmetNeural"
-    communicate = edge_tts.Communicate(metin, ses_kodu, rate="+0%", pitch="+0Hz")
-    await communicate.save(dosya_adi)
+# 3. ANA PANEL SEKMELERİ
+st.title("💊 Florini AI Co-Pilot v2.0")
+tabs = st.tabs(["🎙️ Kayıt", "📅 Geçmiş", "🔬 Dinamik Roleplay", "📚 Literatür (PDF)", "📊 Insights", "🤖 Co-Pilot"])
 
-with st.sidebar:
-    st.title("⚙️ Ayarlar")
-    st.link_button("Excel Dosyasını Aç ↗", excel_url, use_container_width=True)
-    if st.button("Çıkış Yap 🚪", use_container_width=True):
-        st.session_state['giris_basarili'] = False
-        st.rerun()
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎙️ Kayıt", "📅 Geçmiş", "🧬 Literatür", "🎭 Roleplay", "📊 Satış & Hedef"])
-
-# SEKME 1: YENİ KAYIT (Aynı Kaldı)
-with tab1:
-    st.info("📌 İlaçlar: Dolorix, Flexium, Cardioxen")
-    ses_verisi = audio_recorder(text="Kayıt İçin Tıkla", recording_color="#e81e4d", neutral_color="#ffffff", icon_size="2x")
+# --- TAB 1: KVKK UYUMLU KAYIT ---
+with tabs[0]:
+    st.subheader("Yeni Ziyaret Kaydı")
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.info("Sesli komut verirken doktor ismini tam söyleseniz bile sistem otomatik olarak baş harflere (A. Y. gibi) çevirecektir.")
+        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#e74c3c")
+    
     if ses_verisi:
-        with st.spinner("İşleniyor..."):
-            audio_part = {"mime_type": "audio/wav", "data": ses_verisi}
-            sistem_emri = """Sen Florini asistanısın. İlaçlar: Dolorix, Flexium, Cardioxen. Rapor çıkar ve sesli onay ver. {"raporlar": [{"hekim": "Ad", "ilac": "İlaç", "ozet": "Özet", "itiraz": "İtiraz", "aksiyon": "Adım"}], "sesli_onay": "Görüşme kaydedildi."}"""
-            cevap = model.generate_content([sistem_emri, audio_part])
-            veri = json.loads(cevap.text.replace('```json', '').replace('```', '').strip())
-            for r in veri.get("raporlar", []):
-                tablo.append_row([datetime.now().strftime("%d-%m-%Y %H:%M"), r.get("hekim", ""), r.get("ilac", ""), r.get("ozet", ""), r.get("itiraz", ""), r.get("aksiyon", "")])
-            verileri_getir.clear()
-            st.success("Kaydedildi.")
-            asyncio.run(ses_olustur(veri.get("sesli_onay", "Kayıt tamam."), "onay.mp3", "kadin"))
-            st.audio("onay.mp3", format="audio/mp3", autoplay=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
+            tmp_audio.write(ses_verisi)
+            tmp_path = tmp_audio.name
+        
+        with st.spinner("Yapay zeka analiz ediyor..."):
+            audio_file = genai.upload_file(tmp_path)
+            prompt = """
+            Ses kaydını analiz et ve şu JSON formatında döndür. 
+            KRİTİK KVKK KURALI: Hekim ismini sadece baş harflerle yaz (Örn: Ahmet Yılmaz -> A. Y.). 
+            Hastane ve Bölge bilgisini konuşma içinden yakala.
+            {
+                "Hekim": "Baş harfler", "Hastane": "...", "Bölge": "...",
+                "İlaç": "...", "Özet": "...", "İtiraz": "...", "Aksiyon": "..."
+            }
+            """
+            response = model.generate_content([prompt, audio_file])
+            try:
+                res_json = json.loads(response.text.replace("```json", "").replace("```", ""))
+                st.session_state["current_record"] = res_json
+                st.write("### Önizleme")
+                st.table([res_json])
+                
+                if st.button("💾 Veritabanına İşle"):
+                    tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
+                    yeni_satir = [tarih, res_json["Hekim"], res_json["Hastane"], res_json["Bölge"], res_json["İlaç"], res_json["Özet"], res_json["İtiraz"], res_json["Aksiyon"]]
+                    sheet.append_row(yeni_satir)
+                    st.success("Kayıt başarıyla tamamlandı.")
+            except:
+                st.error("Analiz başarısız oldu, lütfen tekrar deneyin.")
 
-# SEKME 2: GEÇMİŞ VE ÖZETLER
-with tab2:
-    st.markdown("### 📅 Veritabanı Geçmişi")
-    if not ziyaret_verisi:
-        st.info("Henüz kayıt bulunmamaktadır.")
+# --- TAB 2: GEÇMİŞ ---
+with tabs[1]:
+    st.subheader("Ziyaret Geçmişi")
+    if not df_ziyaret.empty:
+        st.dataframe(df_ziyaret, use_container_width=True)
     else:
-        gunluk_kayitlar = defaultdict(list)
-        for satir in ziyaret_verisi:
-            tarih_saat = str(satir.get("Tarih", ""))
-            if tarih_saat:
-                gun = tarih_saat.split(" ")[0]
-                gunluk_kayitlar[gun].append(satir)
-        
-        col_dun, col_yarin = st.columns(2)
-        dunun_tarihi = (datetime.now() - timedelta(1)).strftime("%d-%m-%Y")
-        
-        with col_dun:
-            if st.button("🔊 Dünün Özeti"):
-                dun_verisi = gunluk_kayitlar.get(dunun_tarihi, [])
-                if not dun_verisi:
-                    st.warning("Düne ait kayıt bulunamadı.")
-                else:
-                    with st.spinner("Brifing hazırlanıyor..."):
-                        prompt = f"""Şu veri dünkü ziyaretlerim: {str(dun_verisi)}. 
-                        Bana detaylı ve profesyonel bir brifing ver. 
-                        1. Kısaltmaları ASLA kullanma! 'Uzm. Dr.' yerine 'Uzman Doktor' yaz.
-                        2. Unvanlardan sonra ASLA nokta (.) koyma.
-                        3. İlaç isimlerini fonetik yaz (Doloriks, Fleksiyum, Kardiyoksen).
-                        """
-                        ozet_cevap = model.generate_content(prompt).text.strip()
-                        asyncio.run(ses_olustur(ozet_cevap, "dun_ozet.mp3", "kadin"))
-                        st.audio("dun_ozet.mp3", format="audio/mp3", autoplay=True)
-                    
-        with col_yarin:
-            if st.button("📋 Yarının Planı"):
-                with st.spinner("İş planı çıkarılıyor..."):
-                    prompt = f"""Şu veriler tüm kayıtlarım: {str(ziyaret_verisi)}. 
-                    Sadece 'Aksiyon' kısımlarına bak. Yarın yapmam gereken işleri bul.
-                    Bana İKİ parçadan oluşan bir yanıt ver.
-                    Parça 1 (Görsel Liste): Madde madde, çok net bir görsel liste hazırla.
-                    Parça 2 (Sesli Brifing): 'SESLİ_METİN:' kelimesinden sonra bu listenin düz metin olarak halini yaz.
-                    """
-                    cevap = model.generate_content(prompt).text.strip()
-                    
-                    if "SESLİ_METİN:" in cevap:
-                        gorsel_liste, sesli_metin = cevap.split("SESLİ_METİN:")
-                    else:
-                        gorsel_liste = cevap
-                        sesli_metin = cevap
-                    
-                    st.markdown("### 📋 Yarının İş Listesi")
-                    st.info(gorsel_liste.strip())
-                    
-                    asyncio.run(ses_olustur(sesli_metin.strip(), "yarin_plan.mp3", "kadin"))
-                    st.audio("yarin_plan.mp3", format="audio/mp3", autoplay=True)
+        st.info("Veri bulunamadı.")
 
-        for gun in sorted(gunluk_kayitlar.keys(), key=lambda d: datetime.strptime(d, "%d-%m-%Y"), reverse=True):
-            with st.expander(f"📅 {gun} ({len(gunluk_kayitlar[gun])} Kayıt)"):
-                for k in gunluk_kayitlar[gun]:
-                    saat = k['Tarih'].split(' ')[1] if ' ' in k['Tarih'] else ""
-                    st.markdown(f"**{saat} - {k.get('Hekim', '')} ({k.get('İlaç', '')})**")
-                    st.write(f"- **Özet:** {k.get('Özet', '')}\n- **İtiraz:** {k.get('İtiraz', '')}\n- **Aksiyon:** {k.get('Aksiyon', '')}")
-                    st.divider()
-# SEKME 3: LİTERATÜR
-with tab3:
-    arama_sorgusu = st.text_area("İtiraz / Araştırma Konusu:", placeholder="Örn: Diyabetik hastalarda böbreği yorar mı?")
-    if st.button("Tıbbi Literatür Bul"):
-        with st.spinner("PubMed ve The Lancet taranıyor..."):
-            prompt = f"Şu konuyu GERÇEK LİTERATÜR (PubMed) ile cevapla. Referans ver. Mümessilin söyleyeceği kısa bir yanıt yaz: {arama_sorgusu}"
-            st.markdown(model.generate_content(prompt).text)
-
-# SEKME 4: SESLİ DOKTOR ROLEPLAY SİMÜLATÖRÜ
-with tab4:
-    st.markdown("### 🗣️ Canlı Simülasyon (Roleplay)")
-    if ziyaret_verisi:
-        hekimler = list(set([s["Hekim"] for s in ziyaret_verisi if s.get("Hekim")]))
-        secilen_hekim = st.selectbox("Simüle Edilecek Hekim:", ["Seçiniz..."] + hekimler)
+# --- TAB 3: DİNAMİK ROLEPLAY (DÜZELTİLMİŞ) ---
+with tabs[2]:
+    st.subheader("Saha Verisiyle Eğitilmiş Chat-Roleplay")
+    if not df_ziyaret.empty:
+        ilac_listesi = df_ziyaret["İlaç"].unique().tolist()
+        secilen_ilac = st.selectbox("Antrenman yapılacak ilacı seçin:", ilac_listesi)
         
-        if secilen_hekim != "Seçiniz...":
-            # Cinsiyet Tahmini
-            kadin_isimleri = ["ayşe", "fatma", "canan", "elif", "zeynep", "hanım", "dr. ayşe", "dr. canan"]
-            is_kadin = any(isim in secilen_hekim.lower() for isim in kadin_isimleri)
-            cinsiyet_kodu = "kadin" if is_kadin else "erkek"
+        # O ilaca ait geçmiş itirazları topla
+        itirazlar = df_ziyaret[df_ziyaret["İlaç"] == secilen_ilac]["İtiraz"].tolist()
+        itiraz_metni = ", ".join([i for i in itirazlar if i != "Yok"])
+
+        if "roleplay_chat" not in st.session_state:
+            st.session_state.roleplay_chat = []
+
+        for m in st.session_state.roleplay_chat:
+            with st.chat_message(m["role"]): st.markdown(m["content"])
+
+        if user_msg := st.chat_input("Hekime mesajınız..."):
+            st.session_state.roleplay_chat.append({"role": "user", "content": user_msg})
+            with st.chat_message("user"): st.markdown(user_msg)
             
-            st.info(f"🎭 **{secilen_hekim}** karakteri yüklendi. Mikrofona konuşarak simülasyonu başlatın.")
-            rp_ses = audio_recorder(text="Doktora Konuş", key="rp_recorder")
+            with st.spinner("Doktor yanıtlıyor..."):
+                roleplay_prompt = f"""
+                Sen şüpheci bir hekimsin. Sana {secilen_ilac} satılmaya çalışılıyor. 
+                Geçmişteki gerçek itirazların şunlar: {itiraz_metni}.
+                Bu itirazları kullanarak kullanıcıyı zorla. Doğal bir sohbet sürdür.
+                Yanıtın kısa ve net olsun.
+                """
+                ai_response = model.generate_content([roleplay_prompt] + [m["content"] for m in st.session_state.roleplay_chat]).text
+                st.session_state.roleplay_chat.append({"role": "assistant", "content": ai_response})
+                with st.chat_message("assistant"): st.markdown(ai_response)
+    else:
+        st.warning("Roleplay için önce kayıt oluşturmalısınız.")
+
+# --- TAB 4: LİTERATÜR (PDF ANALİZ) ---
+with tabs[3]:
+    st.subheader("PDF Makale Analizi")
+    yuklenen_dosya = st.file_uploader("Klinik çalışma veya broşür yükleyin (PDF):", type="pdf")
+    
+    if yuklenen_dosya:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            tmp_pdf.write(yuklenen_dosya.read())
+            tmp_path_pdf = tmp_pdf.name
+        
+        if st.button("📄 Makaleyi Analiz Et"):
+            with st.spinner("PDF okunuyor..."):
+                pdf_file = genai.upload_file(tmp_path_pdf)
+                prompt_pdf = "Bu klinik çalışmayı özetle. Rakip ilaçlara göre üstünlükleri ve mümessilin kullanabileceği 3 ana argümanı madde madde yaz."
+                res_pdf = model.generate_content([prompt_pdf, pdf_file])
+                st.markdown(res_pdf.text)
+
+# --- TAB 5: INSIGHTS & TAHMİN (PLOTLY) ---
+with tabs[4]:
+    st.subheader("Satış Tahmini ve Trendler")
+    if not df_ziyaret.empty:
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            # Örnek Hedef Tahmini
+            mevcut_ziyaret = len(df_ziyaret)
+            hedef_ziyaret = 100 # Örnek hedef
+            yüzde = (mevcut_ziyaret / hedef_ziyaret) * 100
             
-            if rp_ses:
-                with st.spinner("Doktor düşünüyor..."):
-                    hekim_gecmisi = [s for s in ziyaret_verisi if s["Hekim"] == secilen_hekim]
-                    rp_prompt = f"""
-                    Senin adın {secilen_hekim}. Sen bir doktorsun. Karşında Florini firmasının mümessili var.
-                    İşte senin bu mümessille geçmişte konuştuğun konular ve itirazların: {hekim_gecmisi}.
-                    Senin psikolojik profilin: Bu geçmişe bakarak itiraz eden, meşgul, bazen huysuz ama mantıklı bir doktor ol.
-                    
-                    GÖREV: Sana birazdan gönderilen sesi dinle ve bana DOKTOR KARAKTERİNDEN ÇIKMADAN SADECE 1-2 CÜMLELİK DOĞAL BİR CEVAP VER. Merhaba falan deme, direkt konuya/itiraza gir.
-                    """
-                    audio_part = {"mime_type": "audio/wav", "data": rp_ses}
-                    doktorun_cevabi = model.generate_content([rp_prompt, audio_part]).text.strip()
-                    
-                    st.chat_message("user").write("🎙️ *Sizin ses kaydınız*")
-                    st.chat_message("assistant").write(f"👨‍⚕️ **{secilen_hekim}:** {doktorun_cevabi}")
-                    
-                    # Sesi oluştur ve çal
-                    asyncio.run(ses_olustur(doktorun_cevabi, "doktor_sesi.mp3", cinsiyet_kodu))
-                    st.audio("doktor_sesi.mp3", format="audio/mp3", autoplay=True)
-    else:
-        st.warning("Veri yok.")
+            fig = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = yüzde,
+                title = {'text': "Aylık Hedef Gerçekleşme (%)"},
+                gauge = {'axis': {'range': [None, 100]}, 'bar': {'color': "#004a99"}}
+            ))
+            st.plotly_chart(fig)
+            
+        with col_g2:
+            st.write("**İlaç Bazlı Ziyaret Dağılımı**")
+            st.bar_chart(df_ziyaret["İlaç"].value_counts())
+            
+        st.write("### Yapay Zeka Stratejik Tahmini")
+        tahmin_prompt = f"Şu ziyaret verilerine göre: {df_ziyaret.to_string()}. Gelecek ay için satış tahmini yap ve hangi bölgeye odaklanılması gerektiğini söyle."
+        st.write(model.generate_content(tahmin_prompt).text)
 
-# SEKME 5: SATIŞ VE HEDEFLER
-with tab5:
-    st.markdown("### 📊 Ziyaret ve Satış Performansı")
-    if satis_verisi:
-        df_satis = pd.DataFrame(satis_verisi)
-        # Verileri sayısala çevir
-        df_satis['Satilan_Kutu'] = pd.to_numeric(df_satis['Satilan_Kutu'], errors='coerce').fillna(0)
-        df_satis['Hedef_Kutu'] = pd.to_numeric(df_satis['Hedef_Kutu'], errors='coerce').fillna(0)
-        
-        toplam_satis = df_satis['Satilan_Kutu'].sum()
-        toplam_hedef = df_satis['Hedef_Kutu'].sum()
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Toplam Kutu Hedefi", f"{toplam_hedef}")
-        col2.metric("Gerçekleşen Satış", f"{toplam_satis}", f"{toplam_satis - toplam_hedef} Fark")
-        col3.metric("Hedef Ulaşım %", f"%{int((toplam_satis/toplam_hedef)*100)}" if toplam_hedef else "%0")
-        
-        st.divider()
-        st.markdown("#### 📈 İlaç Bazlı Satış Performansı")
-        ilac_bazli = df_satis.groupby('İlaç')[['Satilan_Kutu', 'Hedef_Kutu']].sum()
-        st.bar_chart(ilac_bazli)
-    else:
+# --- TAB 6: CO-PILOT CHATBOT ---
+with tabs[5]:
+    st.subheader("Florini Co-Pilot Chat")
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-        st.warning("Henüz Excel'de 'Satislar' sayfası oluşturulmamış veya boş.")
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]): st.markdown(m["content"])
+
+    if p := st.chat_input("Nasıl yardımcı olabilirim?"):
+        st.session_state.messages.append({"role": "user", "content": p})
+        with st.chat_message("user"): st.markdown(p)
+        
+        with st.chat_message("assistant"):
+            if "mail" in p.lower() or "taslak" in p.lower():
+                res = model.generate_content(f"Şu istek için profesyonel bir mail taslağı oluştur: {p}").text
+                st.info(res)
+                if st.button("📤 Onayla ve Gönder"): st.success("Mail iletildi.")
+            else:
+                res = model.generate_content(p).text
+                st.markdown(res)
+            st.session_state.messages.append({"role": "assistant", "content": res})
