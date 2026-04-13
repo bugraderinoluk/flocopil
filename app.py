@@ -63,7 +63,7 @@ if not check_password():
 
 # API Ayarları
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-pro-latest')
+model = genai.GenerativeModel('models/gemini-2.5-flash')
 
 # Google Sheets Bağlantısı
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
