@@ -13,7 +13,7 @@ import tempfile
 import os
 
 # 1. PROFESYONEL ARAYÜZ VE CSS AYARLARI
-st.set_page_config(page_title="Florini Co-Pilot Pro", page_icon="💊", layout="wide")
+st.set_page_config(page_title="M-APP Pro", page_icon="💊", layout="wide")
 
 st.markdown("""
     <style>
@@ -61,6 +61,15 @@ def check_password():
 if not check_password():
     st.stop()
 
+# --- SOL PANEL (SÜREKLİ GÖRÜNEN MENÜ VE ÇIKIŞ) ---
+with st.sidebar:
+    st.title("👤 Profil")
+    st.write("Sisteme başarıyla giriş yapıldı.")
+    st.divider()
+    if st.button("🚪 Çıkış Yap"):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
 # API Ayarları
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 model = genai.GenerativeModel('models/gemini-2.5-flash')
@@ -70,7 +79,9 @@ scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds_dict = json.loads(st.secrets["google_json"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1rcUYWr1LTRWkgEJneMZCJOWBsldEa5tmViUdSlCdkBU").sheet1
+# ID Yöntemi ile bağlantı (Daha güvenli)
+# Eğer hata alırsan BURAYA KENDİ SHEET ID'Nİ YAZMAYI UNUTMA
+sheet = client.open("Florini_DB").sheet1 
 
 def veri_getir():
     try:
@@ -82,7 +93,7 @@ def veri_getir():
 df_ziyaret = veri_getir()
 
 # 3. ANA PANEL SEKMELERİ
-st.title("💊 Florini AI Co-Pilot v2.0")
+st.title("💊 M-APP AI Co-Pilot v2.0")
 tabs = st.tabs(["🎙️ Kayıt", "📅 Geçmiş", "🔬 Dinamik Roleplay", "📚 Literatür (PDF)", "📊 Insights", "🤖 Co-Pilot"])
 
 # --- TAB 1: KVKK UYUMLU KAYIT ---
@@ -91,7 +102,7 @@ with tabs[0]:
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.info("Sesli komut verirken doktor ismini tam söyleseniz bile sistem otomatik olarak baş harflere (A. Y. gibi) çevirecektir.")
+        st.info("Doktor ismini tam söyleseniz bile sistem M-APP kuralları gereği otomatik olarak baş harflere çevirecektir.")
         ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#e74c3c")
     
     if ses_verisi:
@@ -99,7 +110,7 @@ with tabs[0]:
             tmp_audio.write(ses_verisi)
             tmp_path = tmp_audio.name
         
-        with st.spinner("Yapay zeka analiz ediyor..."):
+        with st.spinner("M-APP Yapay Zeka analiz ediyor..."):
             audio_file = genai.upload_file(tmp_path)
             prompt = """
             Ses kaydını analiz et ve şu JSON formatında döndür. 
@@ -133,14 +144,13 @@ with tabs[1]:
     else:
         st.info("Veri bulunamadı.")
 
-# --- TAB 3: DİNAMİK ROLEPLAY (DÜZELTİLMİŞ) ---
+# --- TAB 3: DİNAMİK ROLEPLAY ---
 with tabs[2]:
     st.subheader("Saha Verisiyle Eğitilmiş Chat-Roleplay")
     if not df_ziyaret.empty:
         ilac_listesi = df_ziyaret["İlaç"].unique().tolist()
         secilen_ilac = st.selectbox("Antrenman yapılacak ilacı seçin:", ilac_listesi)
         
-        # O ilaca ait geçmiş itirazları topla
         itirazlar = df_ziyaret[df_ziyaret["İlaç"] == secilen_ilac]["İtiraz"].tolist()
         itiraz_metni = ", ".join([i for i in itirazlar if i != "Yok"])
 
@@ -184,16 +194,15 @@ with tabs[3]:
                 res_pdf = model.generate_content([prompt_pdf, pdf_file])
                 st.markdown(res_pdf.text)
 
-# --- TAB 5: INSIGHTS & TAHMİN (PLOTLY) ---
+# --- TAB 5: INSIGHTS & TAHMİN (PLOTLY) - HATA ÇÖZÜMÜ ---
 with tabs[4]:
     st.subheader("Satış Tahmini ve Trendler")
     if not df_ziyaret.empty:
         col_g1, col_g2 = st.columns(2)
         
         with col_g1:
-            # Örnek Hedef Tahmini
             mevcut_ziyaret = len(df_ziyaret)
-            hedef_ziyaret = 100 # Örnek hedef
+            hedef_ziyaret = 100 
             yüzde = (mevcut_ziyaret / hedef_ziyaret) * 100
             
             fig = go.Figure(go.Indicator(
@@ -208,13 +217,17 @@ with tabs[4]:
             st.write("**İlaç Bazlı Ziyaret Dağılımı**")
             st.bar_chart(df_ziyaret["İlaç"].value_counts())
             
-        st.write("### Yapay Zeka Stratejik Tahmini")
-        tahmin_prompt = f"Şu ziyaret verilerine göre: {df_ziyaret.to_string()}. Gelecek ay için satış tahmini yap ve hangi bölgeye odaklanılması gerektiğini söyle."
-        st.write(model.generate_content(tahmin_prompt).text)
+        st.divider()
+        st.write("### M-APP Stratejik Tahmin")
+        # EXHAUSTED HATASINI ÇÖZEN BUTON BURADA:
+        if st.button("🚀 Yapay Zeka ile Analiz Et"):
+            with st.spinner("Strateji çıkarılıyor..."):
+                tahmin_prompt = f"Şu ziyaret verilerine göre: {df_ziyaret.to_string()}. Gelecek ay için satış tahmini yap ve hangi bölgeye odaklanılması gerektiğini söyle."
+                st.write(model.generate_content(tahmin_prompt).text)
 
 # --- TAB 6: CO-PILOT CHATBOT ---
 with tabs[5]:
-    st.subheader("Florini Co-Pilot Chat")
+    st.subheader("M-APP Akıllı Co-Pilot Chat")
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
