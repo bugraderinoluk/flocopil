@@ -81,7 +81,7 @@ creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 # ID Yöntemi ile bağlantı (Daha güvenli)
 # Eğer hata alırsan BURAYA KENDİ SHEET ID'Nİ YAZMAYI UNUTMA
-sheet = client.open("Florini_DB").sheet1 
+sheet = client.open_by_key("1rcUYWr1LTRWkgEJneMZCJOWBsldEa5tmViUdSlCdkBU").sheet1 
 
 def veri_getir():
     try:
