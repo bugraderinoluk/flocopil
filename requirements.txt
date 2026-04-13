@@ -5,3 +5,4 @@ edge-tts
 gspread
 google-auth
 pandas
+plotly
