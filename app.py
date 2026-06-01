@@ -96,7 +96,7 @@ def veri_getir():
 df_ziyaret = veri_getir()
 
 # 3. ANA PANEL SEKMELERİ
-st.title("PACE AI Co-Pilot v2.0")
+st.title("PACE Co-Pilot")
 tabs = st.tabs(["Kayıt", "Geçmiş", "Dinamik Roleplay", "Literatür (PDF)", "Insights", "Co-Pilot"])
 
 # --- TAB 1: KVKK UYUMLU KAYIT ---
