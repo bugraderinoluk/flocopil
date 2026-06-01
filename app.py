@@ -13,29 +13,33 @@ import tempfile
 import os
 
 # 1. PROFESYONEL ARAYÜZ VE CSS AYARLARI
-st.set_page_config(page_title="M-APP Pro", page_icon="💊", layout="wide")
+st.set_page_config(page_title="PACE Pro", layout="wide")
 
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
+    /* Light Lacivert - Kırmızı Gradient Arka Plan */
+    .stApp { 
+        background: linear-gradient(135deg, rgba(0, 31, 91, 0.08) 0%, rgba(217, 26, 35, 0.08) 100%); 
+    }
     .stButton>button {
         width: 100%;
         border-radius: 10px;
         height: 3em;
-        background-color: #004a99;
+        background-color: #001F5B; /* Kurumsal Lacivert */
         color: white;
         font-weight: bold;
         border: none;
     }
-    .stButton>button:hover { background-color: #003366; color: #ffcc00; }
+    .stButton>button:hover { background-color: #D91A23; /* Kurumsal Kırmızı */ color: white; }
     .reportview-container .main .block-container { padding-top: 2rem; }
     div[data-baseweb="tab-list"] { gap: 20px; }
     div[data-baseweb="tab"] {
         padding: 10px 20px;
-        background-color: #f1f3f5;
+        background-color: rgba(255, 255, 255, 0.6);
         border-radius: 10px 10px 0 0;
+        border: 1px solid rgba(0, 31, 91, 0.1);
     }
-    div[aria-selected="true"] { background-color: #004a99 !important; color: white !important; }
+    div[aria-selected="true"] { background-color: #001F5B !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -48,7 +52,7 @@ def check_password():
         return True
 
     with st.sidebar:
-        st.title("🔐 Güvenli Giriş")
+        st.title("Güvenli Giriş")
         pwd = st.text_input("Şifre:", type="password")
         if st.button("Giriş Yap"):
             if pwd == "Florini2026_Pro!":
@@ -63,10 +67,10 @@ if not check_password():
 
 # --- SOL PANEL (SÜREKLİ GÖRÜNEN MENÜ VE ÇIKIŞ) ---
 with st.sidebar:
-    st.title("👤 Profil")
+    st.title("Profil")
     st.write("Sisteme başarıyla giriş yapıldı.")
     st.divider()
-    if st.button("🚪 Çıkış Yap"):
+    if st.button("Çıkış Yap"):
         st.session_state["password_correct"] = False
         st.rerun()
 
@@ -80,7 +84,6 @@ creds_dict = json.loads(st.secrets["google_json"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 # ID Yöntemi ile bağlantı (Daha güvenli)
-# Eğer hata alırsan BURAYA KENDİ SHEET ID'Nİ YAZMAYI UNUTMA
 sheet = client.open_by_key("1rcUYWr1LTRWkgEJneMZCJOWBsldEa5tmViUdSlCdkBU").sheet1 
 
 def veri_getir():
@@ -93,8 +96,8 @@ def veri_getir():
 df_ziyaret = veri_getir()
 
 # 3. ANA PANEL SEKMELERİ
-st.title("💊 M-APP AI Co-Pilot v2.0")
-tabs = st.tabs(["🎙️ Kayıt", "📅 Geçmiş", "🔬 Dinamik Roleplay", "📚 Literatür (PDF)", "📊 Insights", "🤖 Co-Pilot"])
+st.title("PACE AI Co-Pilot v2.0")
+tabs = st.tabs(["Kayıt", "Geçmiş", "Dinamik Roleplay", "Literatür (PDF)", "Insights", "Co-Pilot"])
 
 # --- TAB 1: KVKK UYUMLU KAYIT ---
 with tabs[0]:
@@ -102,15 +105,15 @@ with tabs[0]:
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.info("Doktor ismini tam söyleseniz bile sistem M-APP kuralları gereği otomatik olarak baş harflere çevirecektir.")
-        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#e74c3c")
+        st.info("Doktor ismini tam söyleseniz bile sistem PACE kuralları gereği otomatik olarak baş harflere çevirecektir.")
+        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#D91A23")
     
     if ses_verisi:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
             tmp_audio.write(ses_verisi)
             tmp_path = tmp_audio.name
         
-        with st.spinner("M-APP Yapay Zeka analiz ediyor..."):
+        with st.spinner("PACE Yapay Zeka analiz ediyor..."):
             audio_file = genai.upload_file(tmp_path)
             prompt = """
             Ses kaydını analiz et ve şu JSON formatında döndür. 
@@ -128,7 +131,7 @@ with tabs[0]:
                 st.write("### Önizleme")
                 st.table([res_json])
                 
-                if st.button("💾 Veritabanına İşle"):
+                if st.button("Veritabanına İşle"):
                     tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
                     yeni_satir = [tarih, res_json["Hekim"], res_json["Hastane"], res_json["Bölge"], res_json["İlaç"], res_json["Özet"], res_json["İtiraz"], res_json["Aksiyon"]]
                     sheet.append_row(yeni_satir)
@@ -187,14 +190,14 @@ with tabs[3]:
             tmp_pdf.write(yuklenen_dosya.read())
             tmp_path_pdf = tmp_pdf.name
         
-        if st.button("📄 Makaleyi Analiz Et"):
+        if st.button("Makaleyi Analiz Et"):
             with st.spinner("PDF okunuyor..."):
                 pdf_file = genai.upload_file(tmp_path_pdf)
                 prompt_pdf = "Bu klinik çalışmayı özetle. Rakip ilaçlara göre üstünlükleri ve mümessilin kullanabileceği 3 ana argümanı madde madde yaz."
                 res_pdf = model.generate_content([prompt_pdf, pdf_file])
                 st.markdown(res_pdf.text)
 
-# --- TAB 5: INSIGHTS & TAHMİN (PLOTLY) - HATA ÇÖZÜMÜ ---
+# --- TAB 5: INSIGHTS & TAHMİN (PLOTLY) ---
 with tabs[4]:
     st.subheader("Satış Tahmini ve Trendler")
     if not df_ziyaret.empty:
@@ -209,7 +212,7 @@ with tabs[4]:
                 mode = "gauge+number",
                 value = yüzde,
                 title = {'text': "Aylık Hedef Gerçekleşme (%)"},
-                gauge = {'axis': {'range': [None, 100]}, 'bar': {'color': "#004a99"}}
+                gauge = {'axis': {'range': [None, 100]}, 'bar': {'color': "#001F5B"}}
             ))
             st.plotly_chart(fig)
             
@@ -218,16 +221,15 @@ with tabs[4]:
             st.bar_chart(df_ziyaret["İlaç"].value_counts())
             
         st.divider()
-        st.write("### M-APP Stratejik Tahmin")
-        # EXHAUSTED HATASINI ÇÖZEN BUTON BURADA:
-        if st.button("🚀 Yapay Zeka ile Analiz Et"):
+        st.write("### PACE Stratejik Tahmin")
+        if st.button("Yapay Zeka ile Analiz Et"):
             with st.spinner("Strateji çıkarılıyor..."):
                 tahmin_prompt = f"Şu ziyaret verilerine göre: {df_ziyaret.to_string()}. Gelecek ay için satış tahmini yap ve hangi bölgeye odaklanılması gerektiğini söyle."
                 st.write(model.generate_content(tahmin_prompt).text)
 
 # --- TAB 6: CO-PILOT CHATBOT ---
 with tabs[5]:
-    st.subheader("M-APP Akıllı Co-Pilot Chat")
+    st.subheader("PACE Akıllı Co-Pilot Chat")
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -242,7 +244,7 @@ with tabs[5]:
             if "mail" in p.lower() or "taslak" in p.lower():
                 res = model.generate_content(f"Şu istek için profesyonel bir mail taslağı oluştur: {p}").text
                 st.info(res)
-                if st.button("📤 Onayla ve Gönder"): st.success("Mail iletildi.")
+                if st.button("Onayla ve Gönder"): st.success("Mail iletildi.")
             else:
                 res = model.generate_content(p).text
                 st.markdown(res)
