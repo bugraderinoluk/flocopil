@@ -18,9 +18,12 @@ st.set_page_config(page_title="PACE Pro", layout="wide")
 st.markdown("""
     <style>
     /* Light Lacivert - Kırmızı Gradient Arka Plan */
-    .stApp { 
-        background: linear-gradient(135deg, #f0f4f8 0%, fcebeb 100%); 
+    [data-testid="stAppViewContainer"] { 
+        background: linear-gradient(135deg, #f0f4f8 0%, fcebeb 100%) !important; 
     }
+    [data-testid="stHeader"] {
+        background: transparent !important
+        }
     .stButton>button {
         width: 100%;
         border-radius: 10px;
