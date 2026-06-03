@@ -19,7 +19,7 @@ st.markdown("""
     <style>
     /* Light Lacivert - Kırmızı Gradient Arka Plan */
     .stApp { 
-        background: linear-gradient(135deg, rgba(0, 31, 91, 0.08) 0%, rgba(217, 26, 35, 0.08) 100%); 
+        background: linear-gradient(135deg, #f0f4f8 0%, fcebeb 100%); 
     }
     .stButton>button {
         width: 100%;
@@ -120,7 +120,7 @@ with tabs[0]:
             KRİTİK KVKK KURALI: Hekim ismini sadece baş harflerle yaz (Örn: Ahmet Yılmaz -> A. Y.). 
             Hastane ve Bölge bilgisini konuşma içinden yakala.
             {
-                "Hekim": "Baş harfler", "Hastane": "...", "Bölge": "...",
+                "Hekim": "Baş harfler", "Hastane": "...",
                 "İlaç": "...", "Özet": "...", "İtiraz": "...", "Aksiyon": "..."
             }
             """
@@ -133,7 +133,7 @@ with tabs[0]:
                 
                 if st.button("Veritabanına İşle"):
                     tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
-                    yeni_satir = [tarih, res_json["Hekim"], res_json["Hastane"], res_json["Bölge"], res_json["İlaç"], res_json["Özet"], res_json["İtiraz"], res_json["Aksiyon"]]
+                    yeni_satir = [tarih, res_json["Hekim"], res_json["Hastane"], res_json["İlaç"], res_json["Özet"], res_json["İtiraz"], res_json["Aksiyon"]]
                     sheet.append_row(yeni_satir)
                     st.success("Kayıt başarıyla tamamlandı.")
             except:
