@@ -1,3 +1,4 @@
+import hashlib
 import streamlit as st
 import google.generativeai as genai
 from audio_recorder_streamlit import audio_recorder
