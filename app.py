@@ -175,80 +175,42 @@ with tabs[1]:
     else:
         st.info("Veri bulunamadı.")
 
-# --- TAB 3: DİNAMİK ROLEPLAY ---
+# --- TAB 3: DİNAMİK ROLEPLAY (YAZILI SÜRÜM) ---
 with tabs[2]:
-    st.subheader("Saha Verisiyle Eğitilmiş Sesli Roleplay")
+    st.subheader("Saha Verisiyle Eğitilmiş Chat-Roleplay")
     if not df_ziyaret.empty:
         ilac_listesi = df_ziyaret["İlaç"].unique().tolist()
         secilen_ilac = st.selectbox("Antrenman yapılacak ilacı seçin:", ilac_listesi)
        
         itirazlar = df_ziyaret[df_ziyaret["İlaç"] == secilen_ilac]["İtiraz"].tolist()
-        itiraz_metni = ", ".join([str(i) for i in itirazlar if str(i).strip().lower() != "yok"])
+        # "Yok" olan itirazları ve boşlukları filtreleyip temiz bir string oluşturuyoruz
+        itiraz_metni = ", ".join([str(i) for i in itirazlar if str(i).strip().lower() != "yok" and str(i).strip() != ""])
 
         if "roleplay_chat" not in st.session_state:
             st.session_state.roleplay_chat = []
 
-        # Geçmiş sohbeti ekrana bas ve sadece son mesaja autoplay ver
-        for idx, m in enumerate(st.session_state.roleplay_chat):
-            with st.chat_message(m["role"]):
-                st.markdown(m["content"])
-                if m["role"] == "assistant" and "audio" in m:
-                    # Yalnızca dizideki en son ses dosyası otomatik oynatılır (Döngü önlemi)
-                    is_last = (idx == len(st.session_state.roleplay_chat) - 1)
-                    st.audio(m["audio"], format="audio/mp3", autoplay=is_last)
+        # Geçmiş sohbeti ekrana bas
+        for m in st.session_state.roleplay_chat:
+            with st.chat_message(m["role"]): st.markdown(m["content"])
 
-        st.info("🎙️ Aşağıdaki mikrofona tıklayarak hekime doğrudan seslenin:")
-        sesli_girdi = audio_recorder(text="Konuşmak için tıkla", recording_color="#D91A23", key="roleplay_audio")
-       
-        if sesli_girdi:
-            # Sonsuz döngüyü kıran kilit sistem (Hash kontrolü)
-            audio_hash = hashlib.md5(sesli_girdi).hexdigest()
-            if "last_processed_audio" not in st.session_state or st.session_state.last_processed_audio != audio_hash:
-                st.session_state.last_processed_audio = audio_hash
+        # Kullanıcıdan yazılı input al
+        if user_msg := st.chat_input("Hekime mesajınız..."):
+            st.session_state.roleplay_chat.append({"role": "user", "content": user_msg})
+            with st.chat_message("user"): st.markdown(user_msg)
+           
+            with st.spinner("Doktor yanıtlıyor..."):
+                roleplay_prompt = f"""
+                Sen şüpheci bir hekimsin. Sana {secilen_ilac} satılmaya çalışılıyor.
+                Geçmişteki gerçek itirazların şunlar: {itiraz_metni}.
+                Bu itirazları kullanarak kullanıcıyı zorla. Doğal bir sohbet sürdür.
+                Yanıtın kısa ve net olsun.
+                """
+                # Sohbet geçmişini modele vererek bağlam kopukluğunu önlüyoruz
+                chat_history = [m["content"] for m in st.session_state.roleplay_chat]
+                ai_response = model.generate_content([roleplay_prompt] + chat_history).text
                
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_user:
-                    tmp_user.write(sesli_girdi)
-                    tmp_user_path = tmp_user.name
-               
-                with st.spinner("Hekim (Yapay Zeka) dinliyor ve düşünüyor..."):
-                    user_audio_file = genai.upload_file(tmp_user_path)
-                   
-                    json_prompt = f"""
-                    Sen şüpheci bir hekimsin. Sana {secilen_ilac} satılmaya çalışılıyor.
-                    Şu ana kadarki gerçek saha itirazların şunlar: {itiraz_metni}.
-                    Ekteki ses kaydı mümessilin sana kurduğu cümledir. Ses kaydını dinle ve şu JSON formatında dön:
-                    {{
-                        "user_transcript": "Mümessilin seste söylediği cümlenin tam metni",
-                        "doctor_response": "Hekim olarak mümessile vereceğin kısa, şüpheci ve zorlayıcı yanıt (Maks. 2 cümle)"
-                    }}
-                    Sadece JSON döndür.
-                    """
-                   
-                    try:
-                        res_obj = model.generate_content([json_prompt, user_audio_file])
-                        json_data = json.loads(res_obj.text.replace("```json", "").replace("```", "").strip())
-                        user_text = json_data.get("user_transcript", "🎤 [Ses Anlaşılamadı]")
-                        ai_text = json_data.get("doctor_response", "Peki, bu konuda daha fazla veriye ihtiyacım var.")
-                    except:
-                        user_text = "🎤 [Sesli İfade]"
-                        ai_text = "Şu an bu ilacı reçetelemek için yeterince ikna olmadım, klinik kanıtları görmeliyim."
-                   
-                    # Edge-TTS ile Doktorun Sesini Oluştur (Senkron Çalışma)
-                    def generate_tts(text):
-                        communicate = edge_tts.Communicate(text, "tr-TR-AhmetNeural") # Ahmet sesi şüpheci doktor için idealdir
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as t_file:
-                            asyncio.run(communicate.save(t_file.name))
-                            with open(t_file.name, "rb") as f:
-                                return f.read()
-                   
-                    ai_audio_bytes = generate_tts(ai_text)
-                   
-                    # Konuşmaları ve Ses verisini state'e ekle
-                    st.session_state.roleplay_chat.append({"role": "user", "content": user_text})
-                    st.session_state.roleplay_chat.append({"role": "assistant", "content": ai_text, "audio": ai_audio_bytes})
-                   
-                    # Sayfayı yenile (Yeni mesajlar görünür ve sadece son eklenen ses oynatılır)
-                    st.rerun()
+                st.session_state.roleplay_chat.append({"role": "assistant", "content": ai_response})
+                with st.chat_message("assistant"): st.markdown(ai_response)
     else:
         st.warning("Roleplay için önce kayıt oluşturmalısınız.")
 
