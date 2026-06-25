@@ -109,7 +109,7 @@ with tabs[0]:
    
     with col1:
         st.info("Doktor ismini tam söyleseniz bile sistem PACE kuralları gereği otomatik olarak baş harflere çevirecektir.")
-        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#D91A23")
+        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#D91A23", pause_threshold=3)
    
     if ses_verisi:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
