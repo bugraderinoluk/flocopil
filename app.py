@@ -261,8 +261,35 @@ with tabs[4]:
         st.write("### PACE Stratejik Tahmin")
         if st.button("Yapay Zeka ile Analiz Et"):
             with st.spinner("Strateji çıkarılıyor..."):
-                tahmin_prompt = f"Şu ziyaret verilerine göre: {df_ziyaret.to_string()}. Gelecek ay için satış tahmini yap ve hangi bölgeye odaklanılması gerektiğini söyle."
-                st.write(model.generate_content(tahmin_prompt).text)
+
+                tahmin_prompt = f"""
+        Aşağıdaki ziyaret verilerini analiz et.
+
+        KRİTİK KURALLAR:
+
+        - Hekim isimlerinden ASLA bahsetme.
+        - Hastane isimlerinden ASLA bahsetme.
+        - Tek bir ziyaretten örnek verme.
+        - Bireysel kişiler veya kurumlar hakkında yorum yapma.
+        - Sadece toplu eğilimleri değerlendir.
+                
+        Çıktıyı aşağıdaki başlıklarda oluştur:
+                
+        1. Genel Görünüm
+        2. İlaç Bazlı Trendler
+        3. En Sık Karşılaşılan İtirazlar
+        4. Aksiyon Kalitesi ve Takip Fırsatları
+        5. Gelecek Ay Riskleri
+        6. Gelecek Ay Fırsatları
+        7. Yönetici Özeti
+
+        Veriler:
+                
+        {df_ziyaret.to_string()}
+        """
+                
+                sonuc = model.generate_content(tahmin_prompt)
+                st.markdown(sonuc.text)
 
 # --- TAB 6: CO-PILOT CHATBOT (AKILLI VERİTABANI GÜNCELLEME DESTEKLİ) ---
 with tabs[5]:
