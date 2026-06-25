@@ -106,40 +106,59 @@ tabs = st.tabs(["Kayıt", "Geçmiş", "Dinamik Roleplay", "Literatür (PDF)", "I
 with tabs[0]:
     st.subheader("Yeni Ziyaret Kaydı")
     col1, col2 = st.columns([1, 2])
-   
+
     with col1:
         st.info("Doktor ismini tam söyleseniz bile sistem PACE kuralları gereği otomatik olarak baş harflere çevirecektir.")
-        ses_verisi = audio_recorder(text="Kaydı Başlat", recording_color="#D91A23", pause_threshold=3)
-   
+        ses_verisi = audio_recorder(
+            text="Kaydı Başlat",
+            recording_color="#D91A23",
+            pause_threshold=3
+        )
+
     if ses_verisi:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
             tmp_audio.write(ses_verisi)
             tmp_path = tmp_audio.name
-       
+
         with st.spinner("PACE Yapay Zeka analiz ediyor..."):
+
             audio_file = genai.upload_file(tmp_path)
+
+            mevcut_ilaclar = []
+
+            if not df_ziyaret.empty and "İlaç" in df_ziyaret.columns:
+                mevcut_ilaclar = (
+                    df_ziyaret["İlaç"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+            ilac_listesi_text = ", ".join(mevcut_ilaclar)
+
             prompt = f"""
             Ses kaydını analiz et ve aşağıdaki JSON formatında döndür.
-            
+
             KRİTİK KVKK KURALI:
             - Hekim ismini sadece baş harflerle yaz.
             - Örnek: Ahmet Yılmaz -> A. Y.
             - Hastane bilgisini konuşma içinden yakala.
-            
+
             SİSTEMDE KAYITLI İLAÇLAR:
-            
+
             {ilac_listesi_text}
-            
+
             KRİTİK İLAÇ KURALLARI:
-            
+
             - Konuşmada geçen ilaç sistemde kayıtlı ilaçlardan biriyse mutlaka listedeki yazımı kullan.
             - Telaffuz hatası, eksik söyleme veya küçük yazım farkı varsa en yakın kayıtlı ilacı seç.
             - Yeni bir ilaç adı üretme.
             - Eğer emin değilsen mevcut listedeki en yakın ilacı seç.
             - Sadece konuşmada açıkça farklı bir ilaç olduğu çok net anlaşılıyorsa yeni isim oluştur.
-            
-            Aşağıdaki JSON dışında hiçbir açıklama yazma:
-            
+
+            Sadece aşağıdaki JSON'u döndür. Başka açıklama yazma.
+
             {{
                 "Hekim": "Baş harfler",
                 "Hastane": "...",
@@ -149,31 +168,56 @@ with tabs[0]:
                 "Aksiyon": "..."
             }}
             """
-            
-            mevcut_ilaclar = (
-                df_ziyaret["İlaç"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )    
 
-            ilac_listesi_text = ", ".join(mevcut_ilaclar)
             response = model.generate_content([prompt, audio_file])
+
             try:
-                res_json = json.loads(response.text.replace("```json", "").replace("```", ""))
+                res_json = json.loads(
+                    response.text
+                    .replace("```json", "")
+                    .replace("```", "")
+                )
+
+                # İkinci güvenlik katmanı:
+                # Gemini yanlış yazarsa mevcut ilaçlardan en yakınını seç
+                if mevcut_ilaclar and res_json.get("İlaç"):
+
+                    eslesen = get_close_matches(
+                        str(res_json["İlaç"]),
+                        mevcut_ilaclar,
+                        n=1,
+                        cutoff=0.80
+                    )
+
+                    if eslesen:
+                        res_json["İlaç"] = eslesen[0]
+
                 st.session_state["current_record"] = res_json
+
                 st.write("### Önizleme")
                 st.table([res_json])
-               
+
                 if st.button("Veritabanına İşle"):
                     tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
-                    yeni_satir = [tarih, res_json["Hekim"], res_json["Hastane"], res_json["İlaç"], res_json["Özet"], res_json["İtiraz"], res_json["Aksiyon"]]
+
+                    yeni_satir = [
+                        tarih,
+                        res_json["Hekim"],
+                        res_json["Hastane"],
+                        res_json["İlaç"],
+                        res_json["Özet"],
+                        res_json["İtiraz"],
+                        res_json["Aksiyon"]
+                    ]
+
                     sheet.append_row(yeni_satir)
+
                     st.success("Kayıt başarıyla tamamlandı.")
                     st.rerun()
-            except:
+
+            except Exception as e:
                 st.error("Analiz başarısız oldu, lütfen tekrar deneyin.")
+                st.caption(f"Hata detayı: {str(e)}")
 
 # --- TAB 2: GEÇMİŞ VE AKSİYON PLANLAMA ---
 with tabs[1]:
