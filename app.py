@@ -118,15 +118,47 @@ with tabs[0]:
        
         with st.spinner("PACE Yapay Zeka analiz ediyor..."):
             audio_file = genai.upload_file(tmp_path)
-            prompt = """
-            Ses kaydını analiz et ve şu JSON formatında döndür.
-            KRİTİK KVKK KURALI: Hekim ismini sadece baş harflerle yaz (Örn: Ahmet Yılmaz -> A. Y.).
-            Hastane bilgisini konuşma içinden yakala.
-            {
-                "Hekim": "Baş harfler", "Hastane": "...",
-                "İlaç": "...", "Özet": "...", "İtiraz": "...", "Aksiyon": "..."
-            }
+            prompt = f"""
+            Ses kaydını analiz et ve aşağıdaki JSON formatında döndür.
+            
+            KRİTİK KVKK KURALI:
+            - Hekim ismini sadece baş harflerle yaz.
+            - Örnek: Ahmet Yılmaz -> A. Y.
+            - Hastane bilgisini konuşma içinden yakala.
+            
+            SİSTEMDE KAYITLI İLAÇLAR:
+            
+            {ilac_listesi_text}
+            
+            KRİTİK İLAÇ KURALLARI:
+            
+            - Konuşmada geçen ilaç sistemde kayıtlı ilaçlardan biriyse mutlaka listedeki yazımı kullan.
+            - Telaffuz hatası, eksik söyleme veya küçük yazım farkı varsa en yakın kayıtlı ilacı seç.
+            - Yeni bir ilaç adı üretme.
+            - Eğer emin değilsen mevcut listedeki en yakın ilacı seç.
+            - Sadece konuşmada açıkça farklı bir ilaç olduğu çok net anlaşılıyorsa yeni isim oluştur.
+            
+            Aşağıdaki JSON dışında hiçbir açıklama yazma:
+            
+            {{
+                "Hekim": "Baş harfler",
+                "Hastane": "...",
+                "İlaç": "...",
+                "Özet": "...",
+                "İtiraz": "...",
+                "Aksiyon": "..."
+            }}
             """
+            
+            mevcut_ilaclar = (
+                df_ziyaret["İlaç"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )    
+
+            ilac_listesi_text = ", ".join(mevcut_ilaclar)
             response = model.generate_content([prompt, audio_file])
             try:
                 res_json = json.loads(response.text.replace("```json", "").replace("```", ""))
